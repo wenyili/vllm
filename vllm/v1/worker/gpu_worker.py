@@ -66,6 +66,22 @@ from .utils import request_memory
 
 logger = init_logger(__name__)
 
+
+def _log_mem_snapshot(label: str, device: "torch.types.Device") -> None:
+    """Print a one-line GPU memory breakdown at a named checkpoint."""
+    s = MemorySnapshot(device=device)
+    logger.info(
+        "[MEM] %-40s  cuda_used=%s GiB  torch_alloc=%s GiB"
+        "  torch_reserved=%s GiB  non_torch=%s GiB  free=%s GiB",
+        label,
+        format_gib(s.cuda_memory),
+        format_gib(torch.accelerator.memory_allocated(device)),
+        format_gib(s.torch_memory),
+        format_gib(s.non_torch_memory),
+        format_gib(s.free_memory),
+    )
+
+
 if TYPE_CHECKING:
     from vllm.model_executor.model_loader.tensorizer import TensorizerConfig
     from vllm.v1.worker.gpu_model_runner import GPUModelRunner
@@ -389,7 +405,9 @@ class Worker(WorkerBase):
             self.init_snapshot,
             weights_memory=int(self.model_runner.model_memory_usage),
         ) as profile_result:
+            _log_mem_snapshot("before profile_run", self.device)
             self.model_runner.profile_run()
+            _log_mem_snapshot("after  profile_run", self.device)
 
             profile_torch_peak = torch.accelerator.memory_stats(self.device).get(
                 "allocated_bytes.all.peak", 0
@@ -404,7 +422,9 @@ class Worker(WorkerBase):
                 and self.vllm_config.compilation_config.cudagraph_mode
                 != CUDAGraphMode.NONE
             ):
+                _log_mem_snapshot("before profile_cudagraph_memory", self.device)
                 cudagraph_memory_estimate = self.model_runner.profile_cudagraph_memory()
+                _log_mem_snapshot("after  profile_cudagraph_memory", self.device)
 
         # Use the pre-cudagraph torch peak to avoid double-counting.
         profile_result.torch_peak_increase = (
