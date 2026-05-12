@@ -6649,6 +6649,13 @@ class GPUModelRunner(
         """
         kv_cache_raw_tensors: dict[str, torch.Tensor] = {}
         for kv_cache_tensor in kv_cache_config.kv_cache_tensors:
+            free_bytes, _ = torch.cuda.mem_get_info(self.device)
+            logger.info(
+                "[KV alloc] size=%.3f GiB  free=%.3f GiB  layers=%s",
+                kv_cache_tensor.size / 1024**3,
+                free_bytes / 1024**3,
+                kv_cache_tensor.shared_by,
+            )
             tensor = torch.zeros(
                 kv_cache_tensor.size, dtype=torch.int8, device=self.device
             )
